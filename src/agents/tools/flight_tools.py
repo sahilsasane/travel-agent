@@ -1,0 +1,423 @@
+import os
+import sqlite3
+import uuid
+import warnings
+from datetime import date, datetime
+
+import pytz
+from dotenv import load_dotenv
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool, tool
+
+load_dotenv()
+warnings.filterwarnings("ignore")
+
+db_dir = os.path.join(os.getcwd(), "agents", "db")
+db = os.path.join(db_dir, "travel.sqlite")
+
+
+@tool
+def fetch_user_flight_information_og(config: RunnableConfig) -> list[dict]:
+    """Fetch all tickets for the user along with corresponding flight information and seat assignments.
+
+    Returns:
+        A list of dictionaries where each dictionary contains the ticket details,
+        associated flight details, and the seat assignments for each ticket belonging to the user.
+    """
+    configuration = config.get("configurable", {})
+    passenger_id = configuration.get("passenger_id", None)
+    if not passenger_id:
+        raise ValueError("No passenger ID configured.")
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    query = """
+    SELECT 
+        t.ticket_no, t.book_ref,
+        f.flight_id, f.flight_no, f.departure_airport, f.arrival_airport, f.scheduled_departure, f.scheduled_arrival,
+        bp.seat_no, tf.fare_conditions
+    FROM 
+        tickets t
+        JOIN ticket_flights tf ON t.ticket_no = tf.ticket_no
+        JOIN flights f ON tf.flight_id = f.flight_id
+        JOIN boarding_passes bp ON bp.ticket_no = t.ticket_no AND bp.flight_id = f.flight_id
+    WHERE 
+        t.passenger_id = ?
+    """
+    cursor.execute(query, (passenger_id,))
+    rows = cursor.fetchall()
+    column_names = [column[0] for column in cursor.description]
+    results = [dict(zip(column_names, row)) for row in rows]
+
+    cursor.close()
+    conn.close()
+
+    return results
+
+
+@tool
+def fetch_user_flight_information(config: RunnableConfig) -> list[dict]:
+    """Fetch all tickets for the user along with corresponding flight information and seat assignments.
+
+    Returns:
+        A list of dictionaries where each dictionary contains the ticket details,
+        associated flight details, and the seat assignments for each ticket belonging to the user.
+    """
+    configuration = config.get("configurable", {})
+    passenger_id = configuration.get("passenger_id", None)
+    if not passenger_id:
+        raise ValueError("No passenger ID configured.")
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    query = """
+    SELECT * FROM tickets WHERE passenger_id = ?
+    """
+    cursor.execute(query, (passenger_id,))
+    ticket_rows = cursor.fetchall()
+
+    if not ticket_rows:
+        cursor.close()
+        conn.close()
+        return []
+
+    ticket_column_names = [column[0] for column in cursor.description]
+
+    # Process each ticket and fetch corresponding flight information
+    results = []
+
+    for ticket_row in ticket_rows:
+        # Convert ticket row to dictionary
+        ticket_dict = dict(zip(ticket_column_names, ticket_row))
+
+        # Get flight_id from ticket (assuming it's at index 4, or use the column name)
+        flight_id = ticket_dict.get("flight_id")
+
+        if flight_id:
+            # Fetch flight details for this ticket
+            flight_query = """SELECT * FROM flights WHERE flight_id = ?"""
+            cursor.execute(flight_query, (flight_id,))
+            flight_row = cursor.fetchone()
+
+            if flight_row:
+                flight_column_names = [column[0] for column in cursor.description]
+                flight_dict = dict(zip(flight_column_names, flight_row))
+
+                # Combine ticket and flight information
+                combined_info = {"ticket_info": ticket_dict, "flight_info": flight_dict}
+                results.append(combined_info)
+            else:
+                # If no flight found, still include ticket info
+                combined_info = {"ticket_info": ticket_dict, "flight_info": None}
+                results.append(combined_info)
+        else:
+            # If no flight_id, still include ticket info
+            combined_info = {"ticket_info": ticket_dict, "flight_info": None}
+            results.append(combined_info)
+
+    cursor.close()
+    conn.close()
+
+    return results
+
+
+class FetchFlightDetails(BaseTool):
+    name: str = "fetch_flight_details"
+    description: str = """Fetch all tickets for the user along with corresponding flight information and seat assignments.
+
+    Returns:
+        A list of dictionaries where each dictionary contains the ticket details,
+        associated flight details, and the seat assignments for each ticket belonging to the user.
+    """
+
+    def _run(
+        self,
+        config: RunnableConfig,
+    ) -> list[dict]:
+        configuration = config.get("configurable", {})
+        passenger_id = configuration.get("passenger_id", None)
+        if not passenger_id:
+            raise ValueError("No passenger ID configured.")
+
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+
+        query = """
+        SELECT 
+            t.ticket_no, t.book_ref,
+            f.flight_id, f.flight_no, f.departure_airport, f.arrival_airport, f.scheduled_departure, f.scheduled_arrival,
+            bp.seat_no, tf.fare_conditions
+        FROM 
+            tickets t
+            JOIN ticket_flights tf ON t.ticket_no = tf.ticket_no
+            JOIN flights f ON tf.flight_id = f.flight_id
+            JOIN boarding_passes bp ON bp.ticket_no = t.ticket_no AND bp.flight_id = f.flight_id
+        WHERE 
+            t.passenger_id = ?
+        """
+        cursor.execute(query, (passenger_id,))
+        rows = cursor.fetchall()
+        column_names = [column[0] for column in cursor.description]
+        results = [dict(zip(column_names, row)) for row in rows]
+
+        cursor.close()
+        conn.close()
+
+        return results
+
+
+class SearchFlights(BaseTool):
+    name: str = "search_flights"
+    description: str = """Search for flights based on departure airport, arrival airport, and departure time range."""
+
+    def _run(
+        self,
+        departure_airport: str = None,
+        arrival_airport: str = None,
+        start_time: date | datetime | None = None,
+        end_time: date | datetime | None = None,
+        limit: int = 10,
+    ) -> str:
+        print(
+            f"Executing search_flights with departure_airport={departure_airport}, "
+            f"arrival_airport={arrival_airport}, start_time={start_time}, end_time={end_time}"
+        )
+
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+
+        query = "SELECT * FROM flights WHERE 1 = 1"
+        params = []
+        if departure_airport:
+            query += " AND departure_airport = ?"
+            params.append(departure_airport)
+
+        if arrival_airport:
+            query += " AND arrival_airport = ?"
+            params.append(arrival_airport)
+
+        if start_time:
+            query += " AND DATE(scheduled_departure) >= DATE(?)"
+            params.append(start_time)
+
+        if end_time:
+            query += " AND DATE(scheduled_departure) <= DATE(?)"
+            params.append(end_time)
+        query += " LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        column_names = [column[0] for column in cursor.description]
+        results = [dict(zip(column_names, row)) for row in rows]
+
+        cursor.close()
+        conn.close()
+
+        return results
+
+
+class BookFlight(BaseTool):
+    name: str = "book_flight"
+    description: str = """
+    Book a flight using the provided flight number, departure date, and booking reference.
+    Use this tool when the user wants to book a flight.
+    """
+
+    def _run(
+        self,
+        config: RunnableConfig,
+        flight_no: str,
+        departure: date | datetime,
+        fare_conditions: str | None = "None",
+        meal_preference: str | None = "None",
+        special_assistance: str | None = "None",
+    ) -> str:
+        print(
+            f"Executing book_flight with flight_no={flight_no}, book_ref={1234}, fare_conditions={fare_conditions}, meal_preference={meal_preference}, special_assistance={special_assistance}"
+        )
+
+        configuration = config.get("configurable", {})
+        passenger_id = configuration.get("passenger_id", None)
+        if not passenger_id:
+            raise ValueError("No passenger ID configured.")
+
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+
+        # Get flight details
+        query = "SELECT * FROM flights WHERE flight_no = ? AND DATE(scheduled_departure) = DATE(?)"
+        cursor.execute(
+            query,
+            (
+                flight_no,
+                departure,
+            ),
+        )
+        flight_details = cursor.fetchone()
+
+        print(f"Flight details fetched: {flight_details}")
+        if not flight_details:
+            raise ValueError(f"Flight with number {flight_no} not found.")
+
+        query = "INSERT INTO tickets (ticket_no, book_ref, passenger_id, flight_no, flight_id) VALUES (?, ?, ?, ?, ?)"
+        cursor.execute(
+            query,
+            (
+                uuid.uuid4().hex[:8].upper(),
+                "1234",
+                passenger_id,
+                flight_details[1],
+                str(flight_details[0]),
+            ),
+        )
+        conn.commit()
+        ticket_no = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        # Get ticket
+        # query = (
+        #     "SELECT * FROM ticket_flights WHERE flight_id = ? AND fare_conditions = ?"
+        # )
+        # cursor.execute(query, (flight_details[0], fare_conditions))
+        # ticket_details = cursor.fetchone()
+        # if not ticket_details:
+        #     raise ValueError(f"Ticket for flight {flight_no} not found.")
+
+        # # Book the flight
+        # query = (
+        #     "INSERT INTO tickets (ticket_no, book_ref, passenger_id) VALUES (?, ?, ?)"
+        # )
+        # params = [ticket_details[0], "1234", passenger_id]
+
+        # cursor.execute(query, params)
+        # conn.commit()
+        # ticket_no = cursor.lastrowid
+
+        # # Generate boarding pass
+        # boarding_no = uuid.uuid4().hex[:8].upper()
+        # seat_no = f"{flight_details[1]}{uuid.uuid4().hex[:4].upper()}"
+
+        # query = "INSERT INTO boarding_passes (ticket_no, flight_id, boarding_no, seat_no) VALUES (?, ?, ?, ?)"
+        # params = [ticket_details[0], ticket_details[1], boarding_no, seat_no]
+        # cursor.execute(query, params)
+        # conn.commit()
+        # boarding_pass_id = cursor.lastrowid
+
+        # cursor.close()
+        # conn.close()
+
+        return f"Flight booked successfully with ticket no: {ticket_no}"
+
+
+class CancelFlight(BaseTool):
+    name: str = "cancel_flight"
+    description: str = """Cancel the user's ticket and remove it from the database."""
+
+    def _run(self, config: RunnableConfig, ticket_no: str) -> str:
+        print(f"Executing cancel_flight with ticket_no={ticket_no}")
+
+        configuration = config.get("configurable", {})
+        passenger_id = configuration.get("passenger_id", None)
+        if not passenger_id:
+            raise ValueError("No passenger ID configured.")
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT flight_id FROM ticket_flights WHERE ticket_no = ?", (ticket_no,))
+        existing_ticket = cursor.fetchone()
+        if not existing_ticket:
+            cursor.close()
+            conn.close()
+            return "No existing ticket found for the given ticket number."
+
+        # Check the signed-in user actually has this ticket
+        cursor.execute(
+            "SELECT ticket_no FROM tickets WHERE ticket_no = ? AND passenger_id = ?",
+            (ticket_no, passenger_id),
+        )
+        current_ticket = cursor.fetchone()
+        if not current_ticket:
+            cursor.close()
+            conn.close()
+            return f"Current signed-in passenger with ID {passenger_id} not the owner of ticket {ticket_no}"
+
+        cursor.execute("DELETE FROM tickets WHERE ticket_no = ?", (ticket_no,))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return f"Flight with ticket ID {ticket_no} has been successfully canceled."
+
+
+class UpdateFlight(BaseTool):
+    name: str = "update_flight"
+    description: str = """Update the user's ticket to a new valid flight."""
+
+    def _run(
+        self,
+        config: RunnableConfig,
+        ticket_no: str,
+        new_flight_id: str,
+    ) -> str:
+        configuration = config.get("configurable", {})
+        passenger_id = configuration.get("passenger_id", None)
+        if not passenger_id:
+            raise ValueError("No passenger ID configured.")
+
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT departure_airport, arrival_airport, scheduled_departure FROM flights WHERE flight_id = ?",
+            (new_flight_id,),
+        )
+        new_flight = cursor.fetchone()
+        if not new_flight:
+            cursor.close()
+            conn.close()
+            return "Invalid new flight ID provided."
+        column_names = [column[0] for column in cursor.description]
+        new_flight_dict = dict(zip(column_names, new_flight))
+        timezone = pytz.timezone("Etc/GMT-3")
+        current_time = datetime.now(tz=timezone)
+        departure_time = datetime.strptime(
+            new_flight_dict["scheduled_departure"], "%Y-%m-%d %H:%M:%S.%f%z"
+        )
+        time_until = (departure_time - current_time).total_seconds()
+        if time_until < (3 * 3600):
+            return f"Not permitted to reschedule to a flight that is less than 3 hours from the current time. Selected flight is at {departure_time}."
+
+        cursor.execute("SELECT flight_id FROM ticket_flights WHERE ticket_no = ?", (ticket_no,))
+        current_flight = cursor.fetchone()
+        if not current_flight:
+            cursor.close()
+            conn.close()
+            return "No existing ticket found for the given ticket number."
+
+        # Check the signed-in user actually has this ticket
+        cursor.execute(
+            "SELECT * FROM tickets WHERE ticket_no = ? AND passenger_id = ?",
+            (ticket_no, passenger_id),
+        )
+        current_ticket = cursor.fetchone()
+        if not current_ticket:
+            cursor.close()
+            conn.close()
+            return f"Current signed-in passenger with ID {passenger_id} not the owner of ticket {ticket_no}"
+
+        # In a real application, you'd likely add additional checks here to enforce business logic,
+        # like "does the new departure airport match the current ticket", etc.
+        # While it's best to try to be *proactive* in 'type-hinting' policies to the LLM
+        # it's inevitably going to get things wrong, so you **also** need to ensure your
+        # API enforces valid behavior
+        cursor.execute(
+            "UPDATE ticket_flights SET flight_id = ? WHERE ticket_no = ?",
+            (new_flight_id, ticket_no),
+        )
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+        return "Ticket successfully updated to new flight."
