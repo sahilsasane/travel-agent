@@ -38,6 +38,12 @@ from agents.tools.taxi_tools import (
     BookTaxi,
     SearchTaxi,
 )
+from agents.tools.trip_recommendations import (
+    book_trip,
+    cancel_trip,
+    search_trip_recommendations,
+    update_trip,
+)
 from core import get_model, settings
 
 
@@ -63,7 +69,7 @@ class State(TypedDict):
                 "cancel_flight",
                 "book_car_rental",
                 "book_hotel",
-                "book_excursion",
+                "book_trip",
             ]
         ],
         update_dialog_stack,
@@ -238,6 +244,33 @@ taxi_booking_runnable = taxi_booking_prompt | llm.bind_tools(
     taxi_booking_tools + [CompleteOrEscalate]
 )
 
+book_trip_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a specialized assistant for handling trip recommendations. "
+            "The primary assistant delegates work to you whenever the user needs help booking a recommended trip. "
+            "Search for available trip recommendations based on the user's preferences and confirm the booking details with the customer. "
+            "If you need more information or the customer changes their mind, escalate the task back to the main assistant."
+            " When searching, be persistent. Expand your query bounds if the first search returns no results. "
+            " Remember that a booking isn't completed until after the relevant tool has successfully been used."
+            "\nCurrent time: {time}."
+            '\n\nIf the user needs help, and none of your tools are appropriate for it, then "CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
+            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            " - 'nevermind i think I'll book separately'\n"
+            " - 'i need to figure out transportation while i'm there'\n"
+            " - 'Oh wait i haven't booked my flight yet i'll do that first'\n"
+            " - 'Trip booking confirmed!'",
+        ),
+        ("placeholder", "{messages}"),
+    ]
+).partial(time=datetime.now)
+
+book_trip_safe_tools = [search_trip_recommendations, book_trip, update_trip, cancel_trip]
+book_trip_sensitive_tools = []
+book_trip_tools = book_trip_safe_tools + book_trip_sensitive_tools
+book_trip_runnable = book_trip_prompt | llm.bind_tools(book_trip_tools + [CompleteOrEscalate])
+
 
 # Primary Assistant
 class ToFlightBookingAssistant(BaseModel):
@@ -283,12 +316,21 @@ class ToHotelBookingAssistant(BaseModel):
     )
 
 
+class ToTripBookingAssistant(BaseModel):
+    """Transfer work to a specialized assistant to handle trip bookings."""
+
+    destination: str = Field(description="The destination for the trip.")
+    request: str = Field(
+        description="Any additional information or requests from the user regarding the trip booking."
+    )
+
+
 primary_assistant_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
             "You are a helpful travel assistant."
-            "Your primary role is to search for flight information and company policies to answer customer queries. "
+            "Your primary role is to search for flight information and book flight for customer."
             "Format your responses properly."
             "If a customer requests to book a new flight, update or cancel a flight, book a car rental, book a hotel, or get trip recommendations, "
             "delegate the task to the appropriate specialized assistant by invoking the corresponding tool. You are not able to make these types of changes yourself."
@@ -297,6 +339,7 @@ primary_assistant_prompt = ChatPromptTemplate.from_messages(
             "For flight-related tasks (booking new flights, updating existing bookings, or cancellations), use ToFlightBookingAssistant. "
             "For car rentals, use ToBookCarRental. For hotel bookings, use ToHotelBookingAssistant. "
             "For taxi bookings, use ToTaxiBookingAssistant. "
+            "For trip recommendations, use ToTripBookingAssistant."
             "Provide detailed information to the customer, and always double-check the database before concluding that information is unavailable. "
             " When searching, be persistent. Expand your query bounds if the first search returns no results. "
             " If a search comes up empty, expand your search before giving up."
@@ -308,8 +351,8 @@ primary_assistant_prompt = ChatPromptTemplate.from_messages(
 ).partial(time=datetime.now)
 
 primary_assistant_tools = [
-    TavilySearch(max_results=1),
-    fetch_user_flight_information,
+    TavilySearch(max_results=2),
+    # fetch_user_flight_information,
 ]
 
 assistant_runnable = primary_assistant_prompt | llm.bind_tools(
@@ -319,6 +362,7 @@ assistant_runnable = primary_assistant_prompt | llm.bind_tools(
         ToBookCarRental,
         ToHotelBookingAssistant,
         ToTaxiBookingAssistant,
+        ToTripBookingAssistant,
     ]
 )
 
@@ -523,6 +567,53 @@ builder.add_conditional_edges(
     ],
 )
 
+
+# Trip Booking assistant
+builder.add_node(
+    "enter_book_trip",
+    create_entry_node("Taxi Booking Assistant", "book_trip"),
+)
+builder.add_node("book_trip", Assistant(book_trip_runnable))
+builder.add_edge("enter_book_trip", "book_trip")
+builder.add_node(
+    "book_trip_safe_tools",
+    create_tool_node_with_fallback(book_trip_safe_tools),
+)
+builder.add_node(
+    "book_trip_sensitive_tools",
+    create_tool_node_with_fallback(book_trip_sensitive_tools),
+)
+
+
+def route_book_trip(
+    state: State,
+):
+    route = tools_condition(state)
+    if route == END:
+        return END
+    tool_calls = state["messages"][-1].tool_calls
+    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    if did_cancel:
+        return "leave_skill"
+    safe_toolnames = [t.name for t in book_trip_safe_tools]
+    if all(tc["name"] in safe_toolnames for tc in tool_calls):
+        return "book_trip_safe_tools"
+    return "book_trip_sensitive_tools"
+
+
+builder.add_edge("book_trip_sensitive_tools", "book_trip")
+builder.add_edge("book_trip_safe_tools", "book_trip")
+builder.add_conditional_edges(
+    "book_trip",
+    route_book_trip,
+    [
+        "book_trip_safe_tools",
+        "book_trip_sensitive_tools",
+        "leave_skill",
+        END,
+    ],
+)
+
 # Hotel booking assistant
 builder.add_node("enter_book_hotel", create_entry_node("Hotel Booking Assistant", "book_hotel"))
 builder.add_node("book_hotel", Assistant(book_hotel_runnable))
@@ -583,6 +674,8 @@ def route_primary_assistant(
             return "enter_book_hotel"
         elif tool_calls[0]["name"] == ToTaxiBookingAssistant.__name__:
             return "enter_book_taxi"
+        elif tool_calls[0]["name"] == ToTripBookingAssistant.__name__:
+            return "enter_book_trip"
         return "primary_assistant_tools"
     raise ValueError("Invalid route")
 
@@ -595,6 +688,7 @@ builder.add_conditional_edges(
         "enter_book_car_rental",
         "enter_book_hotel",
         "enter_book_taxi",
+        "enter_book_trip",
         "primary_assistant_tools",
         END,
     ],
@@ -604,7 +698,9 @@ builder.add_edge("primary_assistant_tools", "primary_assistant")
 
 def route_to_workflow(
     state: State,
-) -> Literal["primary_assistant", "update_flight", "book_car_rental", "book_hotel", "book_taxi"]:
+) -> Literal[
+    "primary_assistant", "update_flight", "book_car_rental", "book_hotel", "book_taxi", "book_trip"
+]:
     """If we are in a delegated state, route directly to the appropriate assistant."""
     dialog_state = state.get("dialog_state")
     if not dialog_state:
@@ -618,11 +714,12 @@ builder.add_conditional_edges("fetch_user_info", route_to_workflow)
 memory = MemorySaver()
 workflow = builder.compile(
     checkpointer=memory,
-    # Let the user approve or deny the use of sensitive tools
-    interrupt_before=[
-        "update_flight_sensitive_tools",
-        "book_car_rental_sensitive_tools",
-        "book_hotel_sensitive_tools",
-        "book_taxi_sensitive_tools",
-    ],
+    # # Let the user approve or deny the use of sensitive tools
+    # interrupt_before=[
+    #     "update_flight_sensitive_tools",
+    #     "book_car_rental_sensitive_tools",
+    #     "book_hotel_sensitive_tools",
+    #     "book_taxi_sensitive_tools",
+    #     "book_trip_sensitive_tools",
+    # ],
 )

@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool, tool
 load_dotenv()
 warnings.filterwarnings("ignore")
 
-db_dir = os.path.join(os.getcwd(), "agents", "db")
+db_dir = os.path.join(os.getcwd(), "src", "agents", "db")
 db = os.path.join(db_dir, "travel.sqlite")
 
 
@@ -56,69 +56,84 @@ def fetch_user_flight_information_og(config: RunnableConfig) -> list[dict]:
 
 
 @tool
-def fetch_user_flight_information(config: RunnableConfig) -> list[dict]:
-    """Fetch all tickets for the user along with corresponding flight information and seat assignments.
+def fetch_user_flight_information(config: RunnableConfig) -> dict:
+    """Fetch all tickets for the user along with corresponding flight information, hotel bookings, and taxi bookings.
 
     Returns:
-        A list of dictionaries where each dictionary contains the ticket details,
-        associated flight details, and the seat assignments for each ticket belonging to the user.
+        A dictionary containing flight tickets, hotel bookings, and taxi bookings for the user.
     """
     configuration = config.get("configurable", {})
     passenger_id = configuration.get("passenger_id", None)
     if not passenger_id:
         raise ValueError("No passenger ID configured.")
+
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
-    query = """
-    SELECT * FROM tickets WHERE passenger_id = ?
-    """
-    cursor.execute(query, (passenger_id,))
+    # Fetch flight tickets
+    ticket_query = """SELECT * FROM tickets WHERE passenger_id = ?"""
+    cursor.execute(ticket_query, (passenger_id,))
     ticket_rows = cursor.fetchall()
 
-    if not ticket_rows:
-        cursor.close()
-        conn.close()
-        return []
+    flight_results = []
+    if ticket_rows:
+        ticket_column_names = [column[0] for column in cursor.description]
 
-    ticket_column_names = [column[0] for column in cursor.description]
+        for ticket_row in ticket_rows:
+            ticket_dict = dict(zip(ticket_column_names, ticket_row))
+            flight_id = ticket_dict.get("flight_id")
 
-    # Process each ticket and fetch corresponding flight information
-    results = []
+            if flight_id:
+                flight_query = """SELECT * FROM flights WHERE flight_id = ?"""
+                cursor.execute(flight_query, (flight_id,))
+                flight_row = cursor.fetchone()
 
-    for ticket_row in ticket_rows:
-        # Convert ticket row to dictionary
-        ticket_dict = dict(zip(ticket_column_names, ticket_row))
-
-        # Get flight_id from ticket (assuming it's at index 4, or use the column name)
-        flight_id = ticket_dict.get("flight_id")
-
-        if flight_id:
-            # Fetch flight details for this ticket
-            flight_query = """SELECT * FROM flights WHERE flight_id = ?"""
-            cursor.execute(flight_query, (flight_id,))
-            flight_row = cursor.fetchone()
-
-            if flight_row:
-                flight_column_names = [column[0] for column in cursor.description]
-                flight_dict = dict(zip(flight_column_names, flight_row))
-
-                # Combine ticket and flight information
-                combined_info = {"ticket_info": ticket_dict, "flight_info": flight_dict}
-                results.append(combined_info)
+                if flight_row:
+                    flight_column_names = [column[0] for column in cursor.description]
+                    flight_dict = dict(zip(flight_column_names, flight_row))
+                    combined_info = {"ticket_info": ticket_dict, "flight_info": flight_dict}
+                    flight_results.append(combined_info)
+                else:
+                    combined_info = {"ticket_info": ticket_dict, "flight_info": None}
+                    flight_results.append(combined_info)
             else:
-                # If no flight found, still include ticket info
                 combined_info = {"ticket_info": ticket_dict, "flight_info": None}
-                results.append(combined_info)
-        else:
-            # If no flight_id, still include ticket info
-            combined_info = {"ticket_info": ticket_dict, "flight_info": None}
-            results.append(combined_info)
+                flight_results.append(combined_info)
+
+    # Fetch hotel bookings
+    hotel_query = """SELECT * FROM hotel_bookings WHERE passenger_id = ?"""
+    cursor.execute(hotel_query, (passenger_id,))
+    hotel_rows = cursor.fetchall()
+
+    hotel_results = []
+    if hotel_rows:
+        hotel_column_names = [column[0] for column in cursor.description]
+        hotel_results = [dict(zip(hotel_column_names, row)) for row in hotel_rows]
+
+    # Fetch taxi bookings
+    taxi_query = """SELECT * FROM taxi_bookings WHERE passenger_id = ?"""
+    cursor.execute(taxi_query, (passenger_id,))
+    taxi_rows = cursor.fetchall()
+
+    taxi_results = []
+    if taxi_rows:
+        taxi_column_names = [column[0] for column in cursor.description]
+        taxi_results = [dict(zip(taxi_column_names, row)) for row in taxi_rows]
 
     cursor.close()
     conn.close()
 
-    return results
+    # Format and return all data
+    return {
+        "flights": flight_results,
+        "hotels": hotel_results,
+        "taxis": taxi_results,
+        "summary": {
+            "total_flights": len(flight_results),
+            "total_hotels": len(hotel_results),
+            "total_taxis": len(taxi_results),
+        },
+    }
 
 
 class FetchFlightDetails(BaseTool):
