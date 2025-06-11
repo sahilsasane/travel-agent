@@ -1,24 +1,69 @@
-# Agent Service Toolkit 🧰
+# AI Travel Agent Service Toolkit
 
-Full toolkit for running an AI agent service built with LangGraph, FastAPI and Streamlit.
+A comprehensive, production-ready AI travel agent service built with LangGraph, FastAPI, and Streamlit. This advanced multi-agent system provides sophisticated travel planning capabilities including flight bookings, hotel reservations, car rentals, and personalized trip recommendations.
 
-## Overview
+## Features
 
-The Agent Service Toolkit provides a complete framework for building and deploying AI agents with multiple capabilities:
+### Multi-Agent Travel Planning System
+- **Intelligent Flight Management**: Search, book, update, and cancel flights with real-time availability
+- **Hotel Booking Services**: Complete hotel reservation system with search and management capabilities
+- **Car Rental Integration**: Full car rental booking and management workflow
+- **Taxi Booking**: On-demand taxi booking with location-based services
+- **Trip Recommendations**: AI-powered personalized travel suggestions and itinerary planning
+- **Multi-Step Workflows**: Complex travel planning with agent handoffs and state management
 
-- **Travel Planning**: Flight booking, search, and management
-- **Research Assistant**: Web search and calculator tools
-- **RAG Assistant**: Company policy and HR assistant with document retrieval
-- **Chatbot**: Simple conversational agent
-- **Interrupt Agent**: Interactive personality prediction
+### Advanced AI Capabilities  
+- **RAG (Retrieval-Augmented Generation)**: Document search and company policy assistance
+- **Research Assistant**: Web search with DuckDuckGo integration and calculator tools
+- **Conversational AI**: Natural language processing for travel queries
+- **Memory Management**: Persistent conversation history and user preferences
+- **Safety Controls**: LlamaGuard integration for content filtering
 
-## Architecture
+### Production Architecture
+- **FastAPI Backend**: High-performance REST API with async support
+- **Streamlit Frontend**: Interactive web interface with real-time streaming
+- **Multi-Database Support**: SQLite, PostgreSQL, and MongoDB backends
+- **Docker Deployment**: Container-ready with Docker Compose orchestration
+- **Comprehensive Testing**: Unit, integration, and end-to-end test coverage
 
-The toolkit consists of three main components:
+## System Architecture
 
-1. **Agent Service** ([`src/service/service.py`](src/service/service.py)): FastAPI backend that hosts the LangGraph agents
-2. **Streamlit App** ([`src/streamlit_app.py`](src/streamlit_app.py)): Interactive web interface for chatting with agents
-3. **Client Library** ([`src/client/`](src/client/)): Python client for programmatic access to agents
+The toolkit implements a sophisticated multi-layered architecture:
+
+### Core Components
+1. **Agent Service** ([`src/service/service.py`](src/service/service.py))
+   - FastAPI-based REST API server
+   - WebSocket support for real-time streaming
+   - Authentication and security middleware
+   - Agent lifecycle management
+
+2. **Multi-Agent Framework** ([`src/agents/`](src/agents/))
+   - **Primary Assistant**: Central orchestrator for user interactions
+   - **Flight Booking Agent**: Specialized flight search and booking capabilities
+   - **Hotel Booking Agent**: Complete hotel reservation management
+   - **Car Rental Agent**: Car rental search and booking services
+   - **Taxi Booking Agent**: Local transportation coordination
+   - **Trip Planning Agent**: Personalized itinerary recommendations
+   - **RAG Assistant**: Document retrieval and policy questions
+   - **Research Assistant**: Web search and computational tools
+
+3. **Interactive Frontend** ([`src/streamlit_app.py`](src/streamlit_app.py))
+   - Real-time chat interface with streaming responses
+   - Agent selection and model configuration
+   - Conversation history management
+   - Feedback collection system
+
+4. **Client SDK** ([`src/client/`](src/client/))
+   - Python SDK for programmatic access
+   - Async/sync API support
+   - Streaming response handling
+   - Error handling and retry logic
+
+### Data Layer
+- **Persistent Storage**: Multi-database backend support
+- **Travel Database**: SQLite database with comprehensive travel data
+- **Memory Management**: Conversation state and checkpointing
+- **Document Store**: RAG system for knowledge retrieval
 
 ## Quick Start
 
@@ -72,6 +117,7 @@ Edit [`.env`](.env) and add your API keys:
 ```env
 # Required for most agents
 OPENAI_API_KEY=your_openai_api_key_here
+TAVILY_API_KEY=your_tavily_api_key_here
 
 # Optional: Other provider keys
 ANTHROPIC_API_KEY=your_anthropic_key
@@ -114,11 +160,6 @@ docker compose up --build
 - Search and book flights
 - Manage reservations
 - Interactive booking process
-
-### Research Assistant
-- Web search capabilities via DuckDuckGo
-- Calculator for mathematical operations
-- Comprehensive research workflows
 
 ### RAG Assistant
 - Document retrieval from company handbook
