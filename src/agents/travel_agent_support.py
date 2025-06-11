@@ -34,6 +34,10 @@ from agents.tools.hotel_tools import (
     SearchHotel,
     UpdateHotelBooking,
 )
+from agents.tools.taxi_tools import (
+    BookTaxi,
+    SearchTaxi,
+)
 from core import get_model, settings
 
 
@@ -162,6 +166,8 @@ book_hotel_safe_tools = [SearchHotel(), BookHotel(), UpdateHotelBooking(), Cance
 book_hotel_sensitive_tools = []
 book_hotel_tools = book_hotel_safe_tools + book_hotel_sensitive_tools
 book_hotel_runnable = book_hotel_prompt | llm.bind_tools(book_hotel_tools + [CompleteOrEscalate])
+
+
 # Car Rental Assistant
 book_car_rental_prompt = ChatPromptTemplate.from_messages(
     [
@@ -200,6 +206,38 @@ book_car_rental_runnable = book_car_rental_prompt | llm.bind_tools(
     book_car_rental_tools + [CompleteOrEscalate]
 )
 
+# Taxi Booking Assistant
+taxi_booking_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a specialized assistant for handling taxi bookings. "
+            "The primary assistant delegates work to you whenever the user needs help booking a taxi. "
+            "Format your responses properly."
+            "Search for available taxis based on the user's preferences and confirm the booking details with the customer. "
+            " When searching, be persistent. Expand your query bounds if the first search returns no results. "
+            "If you need more information or the customer changes their mind, escalate the task back to the main assistant."
+            "\nCurrent time: {time}."
+            "\n\nIf the user needs help, and none of your tools are appropriate for it, then "
+            '"CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
+            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            " - 'what's the weather like this time of year?'\n"
+            " - 'What flights are available?'\n"
+            " - 'nevermind i think I'll book separately'\n"
+            " - 'Oh wait i haven't booked my flight yet i'll do that first'\n"
+            " - 'Car rental booking confirmed'",
+        ),
+        ("placeholder", "{messages}"),
+    ]
+).partial(time=datetime.now)
+
+taxi_booking_safe_tools = [SearchTaxi(), BookTaxi()]
+taxi_booking_sensitive_tools = []
+taxi_booking_tools = taxi_booking_safe_tools + taxi_booking_sensitive_tools
+taxi_booking_runnable = taxi_booking_prompt | llm.bind_tools(
+    taxi_booking_tools + [CompleteOrEscalate]
+)
+
 
 # Primary Assistant
 class ToFlightBookingAssistant(BaseModel):
@@ -218,6 +256,19 @@ class ToBookCarRental(BaseModel):
     end_date: str = Field(description="The end date of the car rental.")
     request: str = Field(
         description="Any additional information or requests from the user regarding the car rental."
+    )
+
+
+class ToTaxiBookingAssistant(BaseModel):
+    """Transfer work to a specialized assistant to handle taxi bookings."""
+
+    pickup_location: str = Field(description="The location where the user wants to be picked up.")
+    dropoff_location: str = Field(
+        description="The location where the user wants to be dropped off."
+    )
+    pickup_time: str = Field(description="The time when the user wants to be picked up.")
+    request: str = Field(
+        description="Any additional information or requests from the user regarding the taxi booking."
     )
 
 
@@ -245,6 +296,7 @@ primary_assistant_prompt = ChatPromptTemplate.from_messages(
             "The user is not aware of the different specialized assistants, so do not mention them; just quietly delegate through function calls. "
             "For flight-related tasks (booking new flights, updating existing bookings, or cancellations), use ToFlightBookingAssistant. "
             "For car rentals, use ToBookCarRental. For hotel bookings, use ToHotelBookingAssistant. "
+            "For taxi bookings, use ToTaxiBookingAssistant. "
             "Provide detailed information to the customer, and always double-check the database before concluding that information is unavailable. "
             " When searching, be persistent. Expand your query bounds if the first search returns no results. "
             " If a search comes up empty, expand your search before giving up."
@@ -266,6 +318,7 @@ assistant_runnable = primary_assistant_prompt | llm.bind_tools(
         ToFlightBookingAssistant,
         ToBookCarRental,
         ToHotelBookingAssistant,
+        ToTaxiBookingAssistant,
     ]
 )
 
@@ -375,8 +428,9 @@ def pop_dialog_state(state: State) -> dict:
 
 builder.add_node("leave_skill", pop_dialog_state)
 builder.add_edge("leave_skill", "primary_assistant")
-# Car rental assistant
 
+
+# Car rental assistant
 builder.add_node(
     "enter_book_car_rental",
     create_entry_node("Car Rental Assistant", "book_car_rental"),
@@ -421,6 +475,54 @@ builder.add_conditional_edges(
         END,
     ],
 )
+
+
+# Taxi Booking assistant
+builder.add_node(
+    "enter_book_taxi",
+    create_entry_node("Taxi Booking Assistant", "book_taxi"),
+)
+builder.add_node("book_taxi", Assistant(taxi_booking_runnable))
+builder.add_edge("enter_book_taxi", "book_taxi")
+builder.add_node(
+    "book_taxi_safe_tools",
+    create_tool_node_with_fallback(taxi_booking_safe_tools),
+)
+builder.add_node(
+    "book_taxi_sensitive_tools",
+    create_tool_node_with_fallback(taxi_booking_sensitive_tools),
+)
+
+
+def route_book_taxi(
+    state: State,
+):
+    route = tools_condition(state)
+    if route == END:
+        return END
+    tool_calls = state["messages"][-1].tool_calls
+    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    if did_cancel:
+        return "leave_skill"
+    safe_toolnames = [t.name for t in taxi_booking_safe_tools]
+    if all(tc["name"] in safe_toolnames for tc in tool_calls):
+        return "book_taxi_safe_tools"
+    return "book_taxi_sensitive_tools"
+
+
+builder.add_edge("book_taxi_sensitive_tools", "book_taxi")
+builder.add_edge("book_taxi_safe_tools", "book_taxi")
+builder.add_conditional_edges(
+    "book_taxi",
+    route_book_taxi,
+    [
+        "book_taxi_safe_tools",
+        "book_taxi_sensitive_tools",
+        "leave_skill",
+        END,
+    ],
+)
+
 # Hotel booking assistant
 builder.add_node("enter_book_hotel", create_entry_node("Hotel Booking Assistant", "book_hotel"))
 builder.add_node("book_hotel", Assistant(book_hotel_runnable))
@@ -458,6 +560,8 @@ builder.add_conditional_edges(
     route_book_hotel,
     ["leave_skill", "book_hotel_safe_tools", "book_hotel_sensitive_tools", END],
 )
+
+
 # Primary assistant
 builder.add_node("primary_assistant", Assistant(assistant_runnable))
 builder.add_node("primary_assistant_tools", create_tool_node_with_fallback(primary_assistant_tools))
@@ -477,6 +581,8 @@ def route_primary_assistant(
             return "enter_book_car_rental"
         elif tool_calls[0]["name"] == ToHotelBookingAssistant.__name__:
             return "enter_book_hotel"
+        elif tool_calls[0]["name"] == ToTaxiBookingAssistant.__name__:
+            return "enter_book_taxi"
         return "primary_assistant_tools"
     raise ValueError("Invalid route")
 
@@ -488,6 +594,7 @@ builder.add_conditional_edges(
         "enter_update_flight",
         "enter_book_car_rental",
         "enter_book_hotel",
+        "enter_book_taxi",
         "primary_assistant_tools",
         END,
     ],
@@ -497,12 +604,7 @@ builder.add_edge("primary_assistant_tools", "primary_assistant")
 
 def route_to_workflow(
     state: State,
-) -> Literal[
-    "primary_assistant",
-    "update_flight",
-    "book_car_rental",
-    "book_hotel",
-]:
+) -> Literal["primary_assistant", "update_flight", "book_car_rental", "book_hotel", "book_taxi"]:
     """If we are in a delegated state, route directly to the appropriate assistant."""
     dialog_state = state.get("dialog_state")
     if not dialog_state:
@@ -521,5 +623,6 @@ workflow = builder.compile(
         "update_flight_sensitive_tools",
         "book_car_rental_sensitive_tools",
         "book_hotel_sensitive_tools",
+        "book_taxi_sensitive_tools",
     ],
 )

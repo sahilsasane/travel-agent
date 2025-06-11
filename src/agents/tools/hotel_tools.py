@@ -76,7 +76,7 @@ class BookHotel(BaseTool):
         hotel_id: str,
         check_in_date: date,
         check_out_date: date,
-        room_type: str | None = None,
+        room_type: str = None,
         num_guests: int = 1,
     ) -> str:
         print(
