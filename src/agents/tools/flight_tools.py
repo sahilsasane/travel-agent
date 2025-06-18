@@ -115,6 +115,15 @@ def fetch_user_flight_information(config: RunnableConfig) -> dict:
     cursor.execute(taxi_query, (passenger_id,))
     taxi_rows = cursor.fetchall()
 
+    # Fetch car rental bookings
+    car_rental_query = """SELECT * FROM car_rental_bookings WHERE passenger_id = ?"""
+    cursor.execute(car_rental_query, (passenger_id,))
+    car_rental_rows = cursor.fetchall()
+    car_rental_results = []
+    if car_rental_rows:
+        car_rental_column_names = [column[0] for column in cursor.description]
+        car_rental_results = [dict(zip(car_rental_column_names, row)) for row in car_rental_rows]
+
     taxi_results = []
     if taxi_rows:
         taxi_column_names = [column[0] for column in cursor.description]
@@ -128,10 +137,12 @@ def fetch_user_flight_information(config: RunnableConfig) -> dict:
         "flights": flight_results,
         "hotels": hotel_results,
         "taxis": taxi_results,
+        "car_rentals": car_rental_results,
         "summary": {
             "total_flights": len(flight_results),
             "total_hotels": len(hotel_results),
             "total_taxis": len(taxi_results),
+            "total_car_rentals": len(car_rental_results),
         },
     }
 

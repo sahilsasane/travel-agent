@@ -11,7 +11,7 @@ load_dotenv()
 warnings.filterwarnings("ignore")
 
 
-db_dir = os.path.join(os.getcwd(), "agents", "db")
+db_dir = os.path.join(os.getcwd(), "db")
 db = os.path.join(db_dir, "travel.sqlite")
 
 

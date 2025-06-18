@@ -1,8 +1,8 @@
+import os
 import sqlite3
 import uuid
 import warnings
 from datetime import date
-from typing import Optional
 
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
@@ -10,7 +10,9 @@ from langchain_core.tools import BaseTool
 
 load_dotenv()
 warnings.filterwarnings("ignore")
-db = "./travel.sqlite"
+
+db_dir = os.path.join(os.getcwd(), "db")
+db = os.path.join(db_dir, "travel.sqlite")
 
 
 class SearchHotel(BaseTool):
@@ -33,9 +35,7 @@ class SearchHotel(BaseTool):
         name: str | None = None,
         price_tier: str | None = None,
     ) -> list[dict]:
-        print(
-            f"Executing search_hotel with location={location}, price_tier={price_tier}"
-        )
+        print(f"Executing search_hotel with location={location}, price_tier={price_tier}")
 
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
@@ -55,10 +55,7 @@ class SearchHotel(BaseTool):
 
         conn.close()
 
-        return [
-            dict(zip([column[0] for column in cursor.description], row))
-            for row in results
-        ]
+        return [dict(zip([column[0] for column in cursor.description], row)) for row in results]
 
 
 class BookHotel(BaseTool):
@@ -79,7 +76,7 @@ class BookHotel(BaseTool):
         hotel_id: str,
         check_in_date: date,
         check_out_date: date,
-        room_type: Optional[str] = None,
+        room_type: str = None,
         num_guests: int = 1,
     ) -> str:
         print(
@@ -172,7 +169,9 @@ class UpdateHotelBooking(BaseTool):
         booking_id = booking_details[0]
 
         # Update the hotel booking
-        query = "UPDATE hotel_bookings SET check_in_date = ?, check_out_date = ? WHERE booking_id = ?"
+        query = (
+            "UPDATE hotel_bookings SET check_in_date = ?, check_out_date = ? WHERE booking_id = ?"
+        )
         params = [new_check_in_date, new_check_out_date, booking_id]
 
         cursor.execute(query, params)

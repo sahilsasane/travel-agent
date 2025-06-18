@@ -284,9 +284,9 @@ class ToFlightBookingAssistant(BaseModel):
 class ToBookCarRental(BaseModel):
     """Transfers work to a specialized assistant to handle car rental bookings."""
 
-    location: str = Field(description="The location where the user wants to rent a car.")
-    start_date: str = Field(description="The start date of the car rental.")
-    end_date: str = Field(description="The end date of the car rental.")
+    # location: str = Field(description="The location where the user wants to rent a car.")
+    # start_date: str = Field(description="The start date of the car rental.")
+    # end_date: str = Field(description="The end date of the car rental.")
     request: str = Field(
         description="Any additional information or requests from the user regarding the car rental."
     )
@@ -295,11 +295,11 @@ class ToBookCarRental(BaseModel):
 class ToTaxiBookingAssistant(BaseModel):
     """Transfer work to a specialized assistant to handle taxi bookings."""
 
-    pickup_location: str = Field(description="The location where the user wants to be picked up.")
-    dropoff_location: str = Field(
-        description="The location where the user wants to be dropped off."
-    )
-    pickup_time: str = Field(description="The time when the user wants to be picked up.")
+    # pickup_location: str = Field(description="The location where the user wants to be picked up.")
+    # dropoff_location: str = Field(
+    #     description="The location where the user wants to be dropped off."
+    # )
+    # pickup_time: str = Field(description="The time when the user wants to be picked up.")
     request: str = Field(
         description="Any additional information or requests from the user regarding the taxi booking."
     )
@@ -308,9 +308,9 @@ class ToTaxiBookingAssistant(BaseModel):
 class ToHotelBookingAssistant(BaseModel):
     """Transfer work to a specialized assistant to handle hotel bookings."""
 
-    location: str = Field(description="The location where the user wants to book a hotel.")
-    checkin_date: str = Field(description="The check-in date for the hotel.")
-    checkout_date: str = Field(description="The check-out date for the hotel.")
+    # location: str = Field(description="The location where the user wants to book a hotel.")
+    # checkin_date: str = Field(description="The check-in date for the hotel.")
+    # checkout_date: str = Field(description="The check-out date for the hotel.")
     request: str = Field(
         description="Any additional information or requests from the user regarding the hotel booking."
     )
@@ -319,7 +319,7 @@ class ToHotelBookingAssistant(BaseModel):
 class ToTripBookingAssistant(BaseModel):
     """Transfer work to a specialized assistant to handle trip bookings."""
 
-    destination: str = Field(description="The destination for the trip.")
+    # destination: str = Field(description="The destination for the trip.")
     request: str = Field(
         description="Any additional information or requests from the user regarding the trip booking."
     )
@@ -396,6 +396,7 @@ def user_info(state: State):
 
 builder.add_node("fetch_user_info", user_info)
 builder.add_edge(START, "fetch_user_info")
+
 builder.add_node(
     "enter_update_flight",
     create_entry_node("Flight Updates & Booking Assistant", "update_flight"),
@@ -457,7 +458,6 @@ def pop_dialog_state(state: State) -> dict:
     """
     messages = []
     if state["messages"][-1].tool_calls:
-        # Note: Doesn't currently handle the edge case where the llm performs parallel tool calls
         messages.append(
             ToolMessage(
                 content="Resuming dialog with the host assistant. Please reflect on the past conversation and assist the user as needed.",

@@ -1,7 +1,7 @@
+import os
 import sqlite3
 import warnings
 from datetime import date, datetime
-from typing import Optional
 
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
@@ -9,99 +9,103 @@ from langchain_core.tools import BaseTool
 
 load_dotenv()
 warnings.filterwarnings("ignore")
-db = "./travel.sqlite"
 
 
-class SearchCarRental(BaseTool):
-    name: str = "search_car_rental"
+db_dir = os.path.join(os.getcwd(), "db")
+db = os.path.join(db_dir, "travel.sqlite")
+
+
+class SearchTaxi(BaseTool):
+    name: str = "search_taxi"
     description: str = """
-    Search for car rentals based on location, name, price tier, start date, and end date.
+    Search for taxi based on passenger count, vehicle type, and price tier.
 
     Args:
-        location (Optional[str]): The location of the car rental. Defaults to None.
-        name (Optional[str]): The name of the car rental company. Defaults to None.
-        price_tier (Optional[str]): The price tier of the car rental. Defaults to None.
-        start_date (Optional[Union[datetime, date]]): The start date of the car rental. Defaults to None.
-        end_date (Optional[Union[datetime, date]]): The end date of the car rental. Defaults to None.
+        passenger_count (int, optional): The number of passengers. Defaults to None.
+        vehicle_type (str, optional): The type of vehicle to search for. Defaults to None.
+        price_tier (str, optional): The price tier of the taxi. Defaults to None.
 
     Returns:
-        list[dict]: A list of car rental dictionaries matching the search criteria.
+        list[dict]: A list of taxi dictionaries matching the search criteria.
     """
 
     def _run(
         self,
-        location: str = None,
-        name: str | None = None,
+        vehicle_type: str | None = None,
         price_tier: str | None = None,
-        start_date: Optional[date | datetime] = None,
-        end_date: Optional[date | datetime] = None,
     ) -> list[dict]:
-        print(
-            f"Executing search_hotel with location={location}, price_tier={price_tier}"
-        )
+        print(f"Executing search_taxis with vehicle_type={vehicle_type}, price_tier={price_tier}")
 
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
 
-        # query = "SELECT  FROM car_rentals WHERE 1=1"
-        query = (
-            "SELECT id, name, location, price_tier, booked FROM car_rentals WHERE 1=1"
-        )
+        query = "SELECT * FROM taxi WHERE 1=1"
         params = []
-
-        if location:
-            query += " AND location LIKE ?"
-            params.append(f"%{location}%")
-        if name:
-            query += " AND name LIKE ?"
-            params.append(f"%{name}%")
 
         cursor.execute(query, params)
         results = cursor.fetchall()
 
         conn.close()
 
-        return [
-            dict(zip([column[0] for column in cursor.description], row))
-            for row in results
-        ]
+        return [dict(zip([column[0] for column in cursor.description], row)) for row in results]
 
 
-class BookCarRental(BaseTool):
-    name: str = "book_car_rental"
+class BookTaxi(BaseTool):
+    name: str = "book_taxi"
     description: str = """
-    Book a car rental by its ID.
+    Book a taxi for a passenger
 
     Args:
-        rental_id (int): The ID of the car rental to book.
+        id (str): The ID of the passenger.
+        vehicle_type (str): The type of vehicle to book.
+        pickup_time (Union[datetime, date]): The time when the taxi should pick up the passenger.
+        pickup_location (str): The location where the passenger will be picked up.
+        dropoff_location (str): The location where the passenger will be dropped off.
 
     Returns:
-        str: A message indicating whether the car rental was successfully booked or not.
+        str: A message indicating whether the taxi was successfully booked or not.
     """
 
     def _run(
         self,
         config: RunnableConfig,
-        rental_id: str,
-        start_date: date,
-        end_date: date,
+        id: str,
+        vehicle_type: str,
+        pickup_time: date | datetime,
+        pickup_location: str,
+        dropoff_location: str,
     ) -> str:
-        print(
-            f"Executing book_car_rental with rental_id={rental_id}, start_date={start_date}, end_date={end_date}"
-        )
+        print(f"Executing book_car_rental with id={id}, vehicle_type={vehicle_type}, ")
 
+        configuration = config.get("configurable", {})
+        passenger_id = configuration.get("passenger_id", None)
+        if not passenger_id:
+            raise ValueError("No passenger ID configured.")
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
 
-        cursor.execute("UPDATE car_rentals SET booked = 1 WHERE id = ?", (rental_id,))
+        query = "INSERT INTO taxi_bookings (id, passenger_id, vehicle_type, pickup_time, pickup_location, dropoff_location) VALUES (?, ?, ?, ?, ?, ?)"
+        params = (id, passenger_id, vehicle_type, pickup_time, pickup_location, dropoff_location)
+
+        cursor.execute(query, params)
         conn.commit()
 
         if cursor.rowcount > 0:
             conn.close()
-            return f"Car rental {rental_id} successfully booked."
+            return f"Taxi successfully booked for passenger {id}."
         else:
             conn.close()
-            return f"No car rental found with ID {rental_id}."
+            return f"Failed to book taxi for passenger {id}."
+
+        # cursor.execute("UPDATE car_rentals SET booked = 1 WHERE id = ?", (rental_id,))
+        # conn.commit()
+
+        # if cursor.rowcount > 0:
+        #     conn.close()
+        #     return f"Car rental {rental_id} successfully booked."
+        # else:
+        #     conn.close()
+        #     return f"No car rental found with ID {rental_id}."
 
 
 class UpdateCarRental(BaseTool):
