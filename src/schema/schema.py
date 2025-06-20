@@ -143,6 +143,10 @@ class Feedback(BaseModel):  # type: ignore[no-redef]
         description="Run ID to record feedback for.",
         examples=["847c6285-8fc9-4560-a83f-4e6285809254"],
     )
+    thread_id: str = Field(
+        description="Thread ID to record feedback for.",
+        examples=["847c6285-8fc9-4560-a83f-4e6285809254"],
+    )
     key: str = Field(
         description="Feedback key.",
         examples=["human-feedback-stars"],

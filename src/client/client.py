@@ -69,7 +69,7 @@ class AgentClient:
             raise AgentClientError(f"Error getting service info: {e}")
 
         self.info = ServiceMetadata.model_validate(response.json())
-        print(self.info)
+        # print(self.info)
         if not self.agent or self.agent not in [a.key for a in self.info.agents]:
             self.agent = self.info.default_agent
 
@@ -124,6 +124,7 @@ class AgentClient:
                     headers=self._headers,
                     timeout=self.timeout,
                 )
+                print(response.content)
                 response.raise_for_status()
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error: {e}")
@@ -316,7 +317,7 @@ class AgentClient:
                 raise AgentClientError(f"Error: {e}")
 
     async def acreate_feedback(
-        self, run_id: str, key: str, score: float, kwargs: dict[str, Any] = {}
+        self, run_id: str, thread_id: str, key: str, score: float, kwargs: dict[str, Any] = {}
     ) -> None:
         """
         Create a feedback record for a run.
@@ -325,7 +326,7 @@ class AgentClient:
         credentials can be stored and managed in the service rather than the client.
         See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
         """
-        request = Feedback(run_id=run_id, key=key, score=score, kwargs=kwargs)
+        request = Feedback(run_id=run_id, thread_id=thread_id, key=key, score=score, kwargs=kwargs)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(

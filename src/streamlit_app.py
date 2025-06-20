@@ -440,6 +440,7 @@ async def handle_feedback() -> None:
         st.session_state.last_feedback = (None, None)
 
     latest_run_id = st.session_state.messages[-1].run_id
+    # print(latest_run_id)
     feedback = st.feedback("stars", key=latest_run_id)
 
     # If the feedback value or run ID has changed, send a new feedback record
@@ -451,6 +452,7 @@ async def handle_feedback() -> None:
         try:
             await agent_client.acreate_feedback(
                 run_id=latest_run_id,
+                thread_id=st.session_state.thread_id,
                 key="human-feedback-stars",
                 score=normalized_score,
                 kwargs={"comment": "In-line human feedback"},

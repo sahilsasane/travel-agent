@@ -1,21 +1,24 @@
 import inspect
 import json
 import logging
+import os
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
+import requests
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core._api import LangChainBetaWarning
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 from langgraph.pregel import Pregel
 from langgraph.types import Command, Interrupt
-from langsmith import Client as LangsmithClient
 
 from agents import DEFAULT_AGENT, get_agent, get_all_agent_info
 from core import settings
@@ -85,6 +88,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(lifespan=lifespan)
 router = APIRouter(dependencies=[Depends(verify_bearer)])
+langfuse = Langfuse(
+    host="http://localhost:3000",
+)
 
 
 @router.get("/info")
@@ -107,6 +113,7 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     run_id = uuid4()
     thread_id = user_input.thread_id or str(uuid4())
     user_id = user_input.user_id or str(uuid4())
+    langfuse_handler = CallbackHandler()
 
     configurable = {
         "thread_id": thread_id,
@@ -126,6 +133,8 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     config = RunnableConfig(
         configurable=configurable,
         run_id=run_id,
+        callbacks=[langfuse_handler],
+        metadata={"langfuse_session_id": thread_id, "langfuse_user_id": user_id},
     )
 
     # Check for interrupts that need to be resumed
@@ -354,14 +363,61 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
     credentials can be stored and managed in the service rather than the client.
     See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
     """
-    client = LangsmithClient()
-    kwargs = feedback.kwargs or {}
-    client.create_feedback(
-        run_id=feedback.run_id,
-        key=feedback.key,
-        score=feedback.score,
-        **kwargs,
+    # client = LangsmithClient()
+    # kwargs = feedback.kwargs or {}
+    # get session traces
+    sessionId = feedback.thread_id
+
+    response = requests.get(
+        f'http://localhost:3000/api/public/sessions/"{sessionId}"',
+        auth=(os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"]),
     )
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Failed to retrieve session {sessionId}: {response.text}",
+        )
+    session_traces = response.json().get("traces", [])
+    if not session_traces:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No traces found for session {sessionId}",
+        )
+    # find with session_id (thread_id)
+    latest_trace_id = session_traces[0].get("id")
+    # score that trace
+    # client.create_feedback(
+    #     run_id=feedback.run_id,
+    #     key=feedback.key,
+    #     score=feedback.score,
+    #     **kwargs,
+    # )
+    response = requests.post(
+        "http://localhost:3000/api/public/scores",
+        headers={"Content-Type": "application/json"},
+        json={
+            # "id": feedback.run_id,
+            "traceId": latest_trace_id,
+            # "sessionId": sessionId,
+            # "observationId": None,
+            # "datasetRunId": None,
+            "name": feedback.key,
+            "value": feedback.score,
+            # "comment": None,
+            # "metadata": None,
+            # "environment": None,
+            "dataType": "NUMERIC",
+            # "configId": None,
+        },
+        auth=(os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"]),
+    )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Failed to record feedback: {response.text}",
+        )
+    logger.info(f"Feedback recorded for {latest_trace_id}")
     return FeedbackResponse()
 
 

@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     )
     LANGCHAIN_API_KEY: SecretStr | None = None
 
+    LANGFUSE_SECRET_KEY: SecretStr | None = None
+    LANGFUSE_PUBLIC_KEY: SecretStr | None = None
     # Database Configuration
     DATABASE_TYPE: DatabaseType = (
         DatabaseType.SQLITE
