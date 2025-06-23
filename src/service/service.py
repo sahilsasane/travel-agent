@@ -1,7 +1,6 @@
 import inspect
 import json
 import logging
-import os
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -368,9 +367,14 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
     # get session traces
     sessionId = feedback.thread_id
 
+    auth_credentials = (
+        settings.LANGFUSE_PUBLIC_KEY.get_secret_value(),
+        settings.LANGFUSE_SECRET_KEY.get_secret_value(),
+    )
+
     response = requests.get(
         f'http://localhost:3000/api/public/sessions/"{sessionId}"',
-        auth=(os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"]),
+        auth=auth_credentials,
     )
 
     if response.status_code != 200:
@@ -404,13 +408,13 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
             # "datasetRunId": None,
             "name": feedback.key,
             "value": feedback.score,
-            # "comment": None,
+            "comment": feedback.kwargs.get("comment", ""),
             # "metadata": None,
             # "environment": None,
             "dataType": "NUMERIC",
             # "configId": None,
         },
-        auth=(os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"]),
+        auth=auth_credentials,
     )
     if response.status_code != 200:
         raise HTTPException(

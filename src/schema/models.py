@@ -100,6 +100,8 @@ class GroqModelName(StrEnum):
 
     LLAMA_GUARD_4_12B = "meta-llama/llama-guard-4-12b"
 
+    LLAMA_PROMPT_GUARD = "meta-llama/llama-prompt-guard-2-22m"
+
 
 class AWSModelName(StrEnum):
     """https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html"""

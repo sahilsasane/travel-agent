@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     USE_FAKE_MODEL: bool = False
 
     # If DEFAULT_MODEL is None, it will be set in model_post_init
-    DEFAULT_MODEL: AllModelEnum | None = GoogleModelName.GEMINI_25_FLASH  # type: ignore[assignment]
+    DEFAULT_MODEL: AllModelEnum | None = OpenAIModelName.GPT_4O_MINI  # type: ignore[assignment]
     AVAILABLE_MODELS: set[AllModelEnum] = set()  # type: ignore[assignment]
 
     # Set openai compatible api, mainly used for proof of concept

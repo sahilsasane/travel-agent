@@ -434,7 +434,6 @@ async def draw_messages(
 
 async def handle_feedback() -> None:
     """Draws a feedback widget and records feedback from the user."""
-
     # Keep track of last feedback sent to avoid sending duplicates
     if "last_feedback" not in st.session_state:
         st.session_state.last_feedback = (None, None)
@@ -443,25 +442,44 @@ async def handle_feedback() -> None:
     # print(latest_run_id)
     feedback = st.feedback("stars", key=latest_run_id)
 
-    # If the feedback value or run ID has changed, send a new feedback record
+    # Show input box and submit button when stars are selected but feedback hasn't been submitted yet
     if feedback is not None and (latest_run_id, feedback) != st.session_state.last_feedback:
-        # Normalize the feedback value (an index) to a score between 0 and 1
-        normalized_score = (feedback + 1) / 5.0
+        feedback_submitted_key = f"feedback_submitted_{latest_run_id}"
 
-        agent_client: AgentClient = st.session_state.agent_client
-        try:
-            await agent_client.acreate_feedback(
-                run_id=latest_run_id,
-                thread_id=st.session_state.thread_id,
-                key="human-feedback-stars",
-                score=normalized_score,
-                kwargs={"comment": "In-line human feedback"},
-            )
-        except AgentClientError as e:
-            st.error(f"Error recording feedback: {e}")
-            st.stop()
-        st.session_state.last_feedback = (latest_run_id, feedback)
-        st.toast("Feedback recorded", icon=":material/reviews:")
+        # Only show the input and submit button if feedback hasn't been submitted
+        if not st.session_state.get(feedback_submitted_key, False):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                feedback_text = st.text_input(
+                    "Add a comment (optional):",
+                    key=f"feedback_text_{latest_run_id}",
+                    placeholder="Enter your feedback comment...",
+                )
+            with col2:
+                st.write("")
+                submit_clicked = st.button("Submit", key=f"submit_feedback_{latest_run_id}")
+
+            if submit_clicked:
+                normalized_score = (feedback + 1) / 5.0
+                agent_client: AgentClient = st.session_state.agent_client
+                try:
+                    await agent_client.acreate_feedback(
+                        run_id=latest_run_id,
+                        thread_id=st.session_state.thread_id,
+                        key="human-feedback-stars",
+                        score=normalized_score,
+                        kwargs={
+                            "comment": feedback_text if feedback_text else "In-line human feedback"
+                        },
+                    )
+                except AgentClientError as e:
+                    st.error(f"Error recording feedback: {e}")
+                    st.stop()
+
+                st.session_state.last_feedback = (latest_run_id, feedback)
+                st.session_state[feedback_submitted_key] = True
+                st.toast("Feedback recorded", icon=":material/reviews:")
+                st.rerun()  # Force a rerun to hide the input elements
 
 
 if __name__ == "__main__":

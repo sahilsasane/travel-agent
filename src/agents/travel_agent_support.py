@@ -2,17 +2,18 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Annotated, Literal
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_tavily import TavilySearch
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import tools_condition
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
+from agents.llama_guard import LlamaGuard, LlamaGuardOutput, SafetyAssessment
 from agents.tools.car_rental_tools import (
     BookCarRental,
     CancelCarRental,
@@ -59,6 +60,7 @@ def update_dialog_stack(left: list[str], right: str | None) -> list[str]:
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     user_info: str
+    safety: LlamaGuardOutput
     dialog_state: Annotated[
         list[
             Literal[
@@ -387,6 +389,34 @@ def create_entry_node(assistant_name: str, new_dialog_state: str) -> Callable:
     return entry_node
 
 
+# LlamaGuard
+def format_safety_message(safety: LlamaGuardOutput) -> AIMessage:
+    content = (
+        f"This conversation was flagged for unsafe content: {', '.join(safety.unsafe_categories)}"
+    )
+    return AIMessage(content=content)
+
+
+async def llama_guard_input(state: State, config: RunnableConfig) -> State:
+    llama_guard = LlamaGuard()
+    safety_output = await llama_guard.ainvoke("User", state["messages"])
+    return {"safety": safety_output, "messages": []}
+
+
+async def block_unsafe_content(state: State, config: RunnableConfig) -> State:
+    safety: LlamaGuardOutput = state["safety"]
+    return {"messages": [format_safety_message(safety)]}
+
+
+def check_safety(state: State) -> Literal["unsafe", "safe"]:
+    safety: LlamaGuardOutput = state["safety"]
+    match safety.safety_assessment:
+        case SafetyAssessment.UNSAFE:
+            return "unsafe"
+        case _:
+            return "safe"
+
+
 builder = StateGraph(State)
 
 
@@ -395,7 +425,14 @@ def user_info(state: State):
 
 
 builder.add_node("fetch_user_info", user_info)
-builder.add_edge(START, "fetch_user_info")
+builder.add_node("guard_input", llama_guard_input)
+builder.add_node("block_unsafe_content", block_unsafe_content)
+
+builder.set_entry_point("guard_input")
+builder.add_conditional_edges(
+    "guard_input", check_safety, {"unsafe": "block_unsafe_content", "safe": "fetch_user_info"}
+)
+builder.add_edge("block_unsafe_content", END)
 
 builder.add_node(
     "enter_update_flight",
