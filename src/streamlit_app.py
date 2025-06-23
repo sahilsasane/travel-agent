@@ -434,7 +434,6 @@ async def draw_messages(
 
 async def handle_feedback() -> None:
     """Draws a feedback widget and records feedback from the user."""
-    # Keep track of last feedback sent to avoid sending duplicates
     if "last_feedback" not in st.session_state:
         st.session_state.last_feedback = (None, None)
 
@@ -442,11 +441,9 @@ async def handle_feedback() -> None:
     # print(latest_run_id)
     feedback = st.feedback("stars", key=latest_run_id)
 
-    # Show input box and submit button when stars are selected but feedback hasn't been submitted yet
     if feedback is not None and (latest_run_id, feedback) != st.session_state.last_feedback:
         feedback_submitted_key = f"feedback_submitted_{latest_run_id}"
 
-        # Only show the input and submit button if feedback hasn't been submitted
         if not st.session_state.get(feedback_submitted_key, False):
             col1, col2 = st.columns([4, 1])
             with col1:
@@ -479,7 +476,7 @@ async def handle_feedback() -> None:
                 st.session_state.last_feedback = (latest_run_id, feedback)
                 st.session_state[feedback_submitted_key] = True
                 st.toast("Feedback recorded", icon=":material/reviews:")
-                st.rerun()  # Force a rerun to hide the input elements
+                st.rerun()  # clear and hide feedback widget
 
 
 if __name__ == "__main__":
