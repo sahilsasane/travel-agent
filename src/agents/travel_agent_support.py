@@ -101,9 +101,8 @@ class Assistant:
         return {"messages": result}
 
 
-class CompleteOrEscalate(BaseModel):
-    """A tool to mark the current task as completed and/or to escalate control of the dialog to the main assistant,
-    who can re-route the dialog based on the user's needs."""
+class Escalate(BaseModel):
+    """Mark the dialog as complete or escalate it to the primary assistant."""
 
     cancel: bool = True
     reason: str
@@ -128,7 +127,7 @@ flight_booking_prompt = ChatPromptTemplate.from_messages(
             "\n\nCurrent user flight information:\n<Flights>\n{user_info}\n</Flights>"
             "\nCurrent time: {time}."
             "\n\nIf the user needs help, and none of your tools are appropriate for it, then"
-            ' "CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.',
+            ' "Escalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.',
         ),
         ("placeholder", "{messages}"),
     ]
@@ -140,9 +139,7 @@ update_flight_sensitive_tools = []
 update_flight_tools = update_flight_safe_tools + update_flight_sensitive_tools
 
 # Create the runnable with all tools
-update_flight_runnable = flight_booking_prompt | llm.bind_tools(
-    update_flight_tools + [CompleteOrEscalate]
-)
+update_flight_runnable = flight_booking_prompt | llm.bind_tools(update_flight_tools + [Escalate])
 
 # Hotel Booking Assistant
 book_hotel_prompt = ChatPromptTemplate.from_messages(
@@ -157,9 +154,9 @@ book_hotel_prompt = ChatPromptTemplate.from_messages(
             "If you need more information or the customer changes their mind, escalate the task back to the main assistant."
             " Remember that a booking isn't completed until after the relevant tool has successfully been used."
             "\nCurrent time: {time}."
-            '\n\nIf the user needs help, and none of your tools are appropriate for it, then "CompleteOrEscalate" the dialog to the host assistant.'
+            '\n\nIf the user needs help, and none of your tools are appropriate for it, then "Escalate" the dialog to the host assistant.'
             " Do not waste the user's time. Do not make up invalid tools or functions."
-            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            "\n\nSome examples for which you should Escalate:\n"
             " - 'what's the weather like this time of year?'\n"
             " - 'nevermind i think I'll book separately'\n"
             " - 'i need to figure out transportation while i'm there'\n"
@@ -173,7 +170,7 @@ book_hotel_prompt = ChatPromptTemplate.from_messages(
 book_hotel_safe_tools = [SearchHotel(), BookHotel(), UpdateHotelBooking(), CancelHotelBooking()]
 book_hotel_sensitive_tools = []
 book_hotel_tools = book_hotel_safe_tools + book_hotel_sensitive_tools
-book_hotel_runnable = book_hotel_prompt | llm.bind_tools(book_hotel_tools + [CompleteOrEscalate])
+book_hotel_runnable = book_hotel_prompt | llm.bind_tools(book_hotel_tools + [Escalate])
 
 
 # Car Rental Assistant
@@ -190,8 +187,8 @@ book_car_rental_prompt = ChatPromptTemplate.from_messages(
             " Remember that a booking isn't completed until after the relevant tool has successfully been used."
             "\nCurrent time: {time}."
             "\n\nIf the user needs help, and none of your tools are appropriate for it, then "
-            '"CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
-            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            '"Escalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
+            "\n\nSome examples for which you should Escalate:\n"
             " - 'what's the weather like this time of year?'\n"
             " - 'What flights are available?'\n"
             " - 'nevermind i think I'll book separately'\n"
@@ -211,7 +208,7 @@ book_car_rental_safe_tools = [
 book_car_rental_sensitive_tools = []
 book_car_rental_tools = book_car_rental_safe_tools + book_car_rental_sensitive_tools
 book_car_rental_runnable = book_car_rental_prompt | llm.bind_tools(
-    book_car_rental_tools + [CompleteOrEscalate]
+    book_car_rental_tools + [Escalate]
 )
 
 # Taxi Booking Assistant
@@ -227,8 +224,8 @@ taxi_booking_prompt = ChatPromptTemplate.from_messages(
             "If you need more information or the customer changes their mind, escalate the task back to the main assistant."
             "\nCurrent time: {time}."
             "\n\nIf the user needs help, and none of your tools are appropriate for it, then "
-            '"CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
-            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            '"Escalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
+            "\n\nSome examples for which you should Escalate:\n"
             " - 'what's the weather like this time of year?'\n"
             " - 'What flights are available?'\n"
             " - 'nevermind i think I'll book separately'\n"
@@ -242,9 +239,7 @@ taxi_booking_prompt = ChatPromptTemplate.from_messages(
 taxi_booking_safe_tools = [SearchTaxi(), BookTaxi()]
 taxi_booking_sensitive_tools = []
 taxi_booking_tools = taxi_booking_safe_tools + taxi_booking_sensitive_tools
-taxi_booking_runnable = taxi_booking_prompt | llm.bind_tools(
-    taxi_booking_tools + [CompleteOrEscalate]
-)
+taxi_booking_runnable = taxi_booking_prompt | llm.bind_tools(taxi_booking_tools + [Escalate])
 
 book_trip_prompt = ChatPromptTemplate.from_messages(
     [
@@ -257,8 +252,8 @@ book_trip_prompt = ChatPromptTemplate.from_messages(
             " When searching, be persistent. Expand your query bounds if the first search returns no results. "
             " Remember that a booking isn't completed until after the relevant tool has successfully been used."
             "\nCurrent time: {time}."
-            '\n\nIf the user needs help, and none of your tools are appropriate for it, then "CompleteOrEscalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
-            "\n\nSome examples for which you should CompleteOrEscalate:\n"
+            '\n\nIf the user needs help, and none of your tools are appropriate for it, then "Escalate" the dialog to the host assistant. Do not waste the user\'s time. Do not make up invalid tools or functions.'
+            "\n\nSome examples for which you should Escalate:\n"
             " - 'nevermind i think I'll book separately'\n"
             " - 'i need to figure out transportation while i'm there'\n"
             " - 'Oh wait i haven't booked my flight yet i'll do that first'\n"
@@ -271,7 +266,7 @@ book_trip_prompt = ChatPromptTemplate.from_messages(
 book_trip_safe_tools = [search_trip_recommendations, book_trip, update_trip, cancel_trip]
 book_trip_sensitive_tools = []
 book_trip_tools = book_trip_safe_tools + book_trip_sensitive_tools
-book_trip_runnable = book_trip_prompt | llm.bind_tools(book_trip_tools + [CompleteOrEscalate])
+book_trip_runnable = book_trip_prompt | llm.bind_tools(book_trip_tools + [Escalate])
 
 
 # Primary Assistant
@@ -378,7 +373,7 @@ def create_entry_node(assistant_name: str, new_dialog_state: str) -> Callable:
                     content=f"The assistant is now the {assistant_name}. Reflect on the above conversation between the host assistant and the user."
                     f" The user's intent is unsatisfied. Use the provided tools to assist the user. Remember, you are {assistant_name},"
                     " and the booking, update, other other action is not complete until after you have successfully invoked the appropriate tool."
-                    " If the user changes their mind or needs help for other tasks, call the CompleteOrEscalate function to let the primary host assistant take control."
+                    " If the user changes their mind or needs help for other tasks, call the Escalate function to let the primary host assistant take control."
                     " Do not mention who you are - just act as the proxy for the assistant.",
                     tool_call_id=tool_call_id,
                 )
@@ -462,8 +457,8 @@ def route_update_flight(state: State):
     if not tool_calls:
         return END
 
-    # Check if CompleteOrEscalate was called
-    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    # Check if Escalate was called
+    did_cancel = any(tc["name"] == Escalate.__name__ for tc in tool_calls)
     if did_cancel:
         return "leave_skill"
 
@@ -535,7 +530,7 @@ def route_book_car_rental(
     if route == END:
         return END
     tool_calls = state["messages"][-1].tool_calls
-    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    did_cancel = any(tc["name"] == Escalate.__name__ for tc in tool_calls)
     if did_cancel:
         return "leave_skill"
     safe_toolnames = [t.name for t in book_car_rental_safe_tools]
@@ -582,7 +577,7 @@ def route_book_taxi(
     if route == END:
         return END
     tool_calls = state["messages"][-1].tool_calls
-    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    did_cancel = any(tc["name"] == Escalate.__name__ for tc in tool_calls)
     if did_cancel:
         return "leave_skill"
     safe_toolnames = [t.name for t in taxi_booking_safe_tools]
@@ -629,7 +624,7 @@ def route_book_trip(
     if route == END:
         return END
     tool_calls = state["messages"][-1].tool_calls
-    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    did_cancel = any(tc["name"] == Escalate.__name__ for tc in tool_calls)
     if did_cancel:
         return "leave_skill"
     safe_toolnames = [t.name for t in book_trip_safe_tools]
@@ -672,7 +667,7 @@ def route_book_hotel(
     if route == END:
         return END
     tool_calls = state["messages"][-1].tool_calls
-    did_cancel = any(tc["name"] == CompleteOrEscalate.__name__ for tc in tool_calls)
+    did_cancel = any(tc["name"] == Escalate.__name__ for tc in tool_calls)
     if did_cancel:
         return "leave_skill"
     tool_names = [t.name for t in book_hotel_safe_tools]

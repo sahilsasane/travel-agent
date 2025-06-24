@@ -1,33 +1,6 @@
 from enum import StrEnum, auto
 from typing import TypeAlias
 
-from pydantic import BaseModel, Field
-
-
-class FlightBookingRequest(BaseModel):
-    flight_number: str = Field(..., description="Exact flight number (e.g., AI203)")
-    flight_date: str = Field(..., description="Date of the flight (YYYY-MM-DD)")
-
-    full_name: str = Field(..., description="Passenger's full name as per ID or passport")
-    date_of_birth: str = Field(..., description="Passenger's date of birth (YYYY-MM-DD)")
-    gender: str | None = Field(None, description="Passenger's gender if required by airline")
-
-    phone_number: str = Field(..., description="Valid contact phone number with country code")
-
-    seat_preference: str | None = Field(
-        None, description="Optional seat preference (e.g., window, aisle)"
-    )
-    meal_preference: str | None = Field(
-        None, description="Optional meal preference (e.g., vegetarian)"
-    )
-    special_assistance: str | None = Field(
-        None, description="Optional request for special assistance"
-    )
-
-    payment_method: str = Field(
-        ..., description="Selected payment method (e.g., credit_card, UPI, wallet)"
-    )
-
 
 class Provider(StrEnum):
     OPENAI = auto()

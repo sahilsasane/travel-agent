@@ -106,28 +106,45 @@ def fetch_user_flight_information(config: RunnableConfig) -> dict:
     hotel_rows = cursor.fetchall()
 
     hotel_results = []
+    hotel_info_rows = []
     if hotel_rows:
         hotel_column_names = [column[0] for column in cursor.description]
         hotel_results = [dict(zip(hotel_column_names, row)) for row in hotel_rows]
+        hotel_ids = [hotel["hotel_id"] for hotel in hotel_results]
+
+        hotel_info_query = """SELECT * FROM hotels WHERE id IN ({})""".format(
+            ",".join("?" for _ in hotel_ids)
+        )
+        cursor.execute(hotel_info_query, hotel_ids)
+        hotel_info_rows = cursor.fetchall()
 
     # Fetch taxi bookings
     taxi_query = """SELECT * FROM taxi_bookings WHERE passenger_id = ?"""
     cursor.execute(taxi_query, (passenger_id,))
     taxi_rows = cursor.fetchall()
 
-    # Fetch car rental bookings
-    car_rental_query = """SELECT * FROM car_rental_bookings WHERE passenger_id = ?"""
-    cursor.execute(car_rental_query, (passenger_id,))
-    car_rental_rows = cursor.fetchall()
-    car_rental_results = []
-    if car_rental_rows:
-        car_rental_column_names = [column[0] for column in cursor.description]
-        car_rental_results = [dict(zip(car_rental_column_names, row)) for row in car_rental_rows]
-
     taxi_results = []
     if taxi_rows:
         taxi_column_names = [column[0] for column in cursor.description]
         taxi_results = [dict(zip(taxi_column_names, row)) for row in taxi_rows]
+
+    # Fetch car rental bookings
+    car_rental_query = """SELECT * FROM car_rental_bookings WHERE passenger_id = ?"""
+    cursor.execute(car_rental_query, (passenger_id,))
+    car_rental_rows = cursor.fetchall()
+
+    car_rental_results = []
+    car_rental_info_rows = []
+    if car_rental_rows:
+        car_rental_column_names = [column[0] for column in cursor.description]
+        car_rental_results = [dict(zip(car_rental_column_names, row)) for row in car_rental_rows]
+        car_rental_ids = [car["rental_id"] for car in car_rental_results]
+
+        car_rental_info_query = """SELECT * FROM car_rentals WHERE id IN ({})""".format(
+            ",".join("?" for _ in car_rental_ids)
+        )
+        cursor.execute(car_rental_info_query, car_rental_ids)
+        car_rental_info_rows = cursor.fetchall()
 
     cursor.close()
     conn.close()
@@ -135,9 +152,11 @@ def fetch_user_flight_information(config: RunnableConfig) -> dict:
     # Format and return all data
     return {
         "flights": flight_results,
-        "hotels": hotel_results,
+        "hotels_bookings": hotel_results,
+        "hotel_info": list(hotel_info_rows) if hotel_info_rows else [],
         "taxis": taxi_results,
-        "car_rentals": car_rental_results,
+        "car_rental_bookings": car_rental_results,
+        "car_rental_info": list(car_rental_info_rows) if car_rental_info_rows else [],
         "summary": {
             "total_flights": len(flight_results),
             "total_hotels": len(hotel_results),
@@ -422,7 +441,6 @@ class UpdateFlight(BaseTool):
             conn.close()
             return "No existing ticket found for the given ticket number."
 
-        # Check the signed-in user actually has this ticket
         cursor.execute(
             "SELECT * FROM tickets WHERE ticket_no = ? AND passenger_id = ?",
             (ticket_no, passenger_id),
@@ -433,11 +451,6 @@ class UpdateFlight(BaseTool):
             conn.close()
             return f"Current signed-in passenger with ID {passenger_id} not the owner of ticket {ticket_no}"
 
-        # In a real application, you'd likely add additional checks here to enforce business logic,
-        # like "does the new departure airport match the current ticket", etc.
-        # While it's best to try to be *proactive* in 'type-hinting' policies to the LLM
-        # it's inevitably going to get things wrong, so you **also** need to ensure your
-        # API enforces valid behavior
         cursor.execute(
             "UPDATE ticket_flights SET flight_id = ? WHERE ticket_no = ?",
             (new_flight_id, ticket_no),
