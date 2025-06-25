@@ -420,14 +420,14 @@ def user_info(state: State):
 
 
 builder.add_node("fetch_user_info", user_info)
-builder.add_node("guard_input", llama_guard_input)
-builder.add_node("block_unsafe_content", block_unsafe_content)
+# builder.add_node("guard_input", llama_guard_input)
+# builder.add_node("block_unsafe_content", block_unsafe_content)
 
-builder.set_entry_point("guard_input")
-builder.add_conditional_edges(
-    "guard_input", check_safety, {"unsafe": "block_unsafe_content", "safe": "fetch_user_info"}
-)
-builder.add_edge("block_unsafe_content", END)
+builder.set_entry_point("fetch_user_info")
+# builder.add_conditional_edges(
+#     "guard_input", check_safety, {"unsafe": "block_unsafe_content", "safe": "fetch_user_info"}
+# )
+# builder.add_edge("block_unsafe_content", END)
 
 builder.add_node(
     "enter_update_flight",

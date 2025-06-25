@@ -102,6 +102,14 @@ The toolkit implements a sophisticated multi-layered architecture with the follo
 - **Conversation Memory**: Multi-backend conversation state and history management
 - **Agent Checkpointing**: LangGraph state persistence for complex workflows
 
+## Agent Workflow
+
+The following diagram illustrates the agent workflow and decision-making process within the travel agent system:
+
+![Agent Workflow](media/workflow_graph.png)
+
+This workflow diagram shows how the travel agent processes user requests, coordinates between different agents, tools and services, and manages the conversation flow to provide comprehensive travel assistance.
+
 ## Quick Start
 
 ### Prerequisites
