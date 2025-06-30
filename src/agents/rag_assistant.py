@@ -15,7 +15,7 @@ from langgraph.prebuilt import ToolNode
 from langgraph.store.memory import InMemoryStore
 
 from agents.llama_guard import LlamaGuard, LlamaGuardOutput, SafetyAssessment
-from agents.tools import database_search
+from agents.rag_tools import database_search
 from core import get_model, settings
 
 

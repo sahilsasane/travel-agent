@@ -132,7 +132,7 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     config = RunnableConfig(
         configurable=configurable,
         run_id=run_id,
-        callbacks=[langfuse_handler],
+        # callbacks=[langfuse_handler],
         metadata={"langfuse_session_id": thread_id, "langfuse_user_id": user_id},
     )
 
