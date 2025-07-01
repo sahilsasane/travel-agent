@@ -227,7 +227,6 @@ class SearchFlights(BaseTool):
             f"Executing search_flights with departure_airport={departure_airport}, "
             f"arrival_airport={arrival_airport}, start_time={start_time}, end_time={end_time}"
         )
-
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
 
